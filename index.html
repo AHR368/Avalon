@@ -1,0 +1,1374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Avalon — Pass & Play</title>
+<style>
+  :root{
+    --bg:#0f1724;
+    --card:#0b1220;
+    --accent:#64b5f6;
+    --good:#2ecc71;
+    --evil:#e74c3c;
+    --muted:#95a5a6;
+    --glass: rgba(255,255,255,0.06);
+    --panel: #08101a;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:linear-gradient(180deg,#041023 0%, #07142a 80%);
+    color:#e6eef6;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    padding:12px;
+    box-sizing:border-box;
+  }
+
+  /* Top header */
+  header{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+  }
+  header h1{font-size:1.1rem;margin:0}
+  header .controls{display:flex;gap:8px;align-items:center}
+
+  /* Layout */
+  .game{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:12px;
+    width:100%;
+  }
+  @media(min-width:900px){
+    .game{grid-template-columns: 360px 1fr 280px;}
+  }
+
+  /* Left column: players & leader */
+  .panel{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:12px;
+    padding:12px;
+    box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+  }
+  .players-list{display:flex;flex-direction:column;gap:8px}
+  .player{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:8px;
+    border-radius:8px;
+    background:var(--glass);
+  }
+  .player .name{flex:1;font-weight:600}
+  .player .small{font-size:0.78rem;color:var(--muted)}
+  .leader-badge{background:linear-gradient(90deg,var(--accent),#2ea6f0);padding:6px;border-radius:8px;font-weight:700;font-size:0.75rem;color:#041426}
+
+  /* Middle: main controls */
+  .center{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+
+  .mission-tracker{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    justify-content:center;
+  }
+  .mission{
+    width:48px;height:48px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border:1px solid rgba(255,255,255,0.03);
+    font-weight:700;
+  }
+  .mission.success{background:linear-gradient(180deg,var(--good),#1da45d);color:#041426}
+  .mission.fail{background:linear-gradient(180deg,var(--evil),#c0392b);color:#041426}
+
+  .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{
+    background:transparent;border:1px solid rgba(255,255,255,0.06);
+    color:inherit;padding:10px 12px;border-radius:10px;font-weight:700;
+    min-height:44px;min-width:44px;
+    cursor:pointer;
+    transition:transform .12s ease,opacity .12s ease;
+  }
+  button:active{transform:translateY(1px)}
+  .primary{background:linear-gradient(90deg,var(--accent),#2ea6f0);border:none;color:#041426}
+  .danger{background:linear-gradient(90deg,#ff7a7a,#ff4f4f);border:none;color:#041426}
+  .muted{opacity:0.85;background:transparent;border:1px dashed rgba(255,255,255,0.03)}
+
+  /* Proposal area */
+  .proposal{display:flex;flex-direction:column;gap:8px}
+  .team-chooser{display:flex;flex-wrap:wrap;gap:8px}
+  .name-chip{padding:8px;border-radius:8px;background:rgba(255,255,255,0.03);cursor:pointer;min-width:80px;text-align:center}
+  .name-chip.selected{outline:3px solid rgba(100,181,246,0.14);box-shadow:0 4px 8px rgba(2,6,23,0.6)}
+
+  /* Right: history and log */
+  .history{display:flex;flex-direction:column;gap:8px}
+  .history .row{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+  .log{height:180px;overflow:auto;padding:8px;border-radius:8px;background:rgba(0,0,0,0.18)}
+  .log p{margin:6px 0;font-size:0.9rem;color:#cfe9ff}
+
+  /* Modal (role reveal / private actions) */
+  .modal-backdrop{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);z-index:9999;
+  }
+  .modal{
+    width:min(780px,96%);max-width:920px;border-radius:12px;padding:16px;background:linear-gradient(180deg,#071427, #04101a);
+    box-shadow:0 10px 40px rgba(2,6,23,0.8);color:#e6f2ff;
+    transform-origin:center center;animation:fadeIn .18s ease;
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* Role card (mostly opaque per requirement) */
+  .role-card{
+    background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    padding:18px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);
+    display:flex;gap:12px;align-items:flex-start;
+  }
+  .role-card .role-title{font-size:1.1rem;font-weight:800}
+  .role-desc{font-size:0.95rem;color:#dbefff;opacity:0.95}
+
+  /* Accept / Deny / Success / Fail card visuals */
+  .card-visual{
+    width:86px;height:54px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;
+    box-shadow:0 6px 12px rgba(2,6,23,0.6);font-size:0.95rem;
+  }
+  .accept{background:linear-gradient(180deg,#e0f7ea,#c8f1db);color:#04321f;border:2px solid rgba(0,0,0,0.08)}
+  .deny{background:linear-gradient(180deg,#ffe7e7,#ffd6d6);color:#4a0f0f;border:2px solid rgba(0,0,0,0.08)}
+  .succ{background:linear-gradient(180deg,#e6ffec,#c6ffd9);color:#022e17}
+  .fail{background:linear-gradient(180deg,#ffdfe0,#ffd0d3);color:#3c0b0b}
+
+  /* small helpers */
+  .muted-text{color:var(--muted);font-size:0.88rem}
+  .centered{display:flex;align-items:center;justify-content:center}
+  input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  label{display:block;font-size:0.9rem;color:var(--muted);margin-bottom:6px}
+
+</style>
+</head>
+<body>
+<header>
+  <h1>Avalon — Local Pass & Play</h1>
+  <div class="controls">
+    <button id="btnReset" title="Reset game">Reset</button>
+    <button id="btnReassign" title="Reassign roles">Reassign Roles</button>
+    <button id="btnRevealRolesToggle" title="Toggle fast reveal">Hide role text (faster)</button>
+  </div>
+</header>
+
+<section class="game" aria-live="polite">
+  <!-- Left column -->
+  <div class="panel" id="leftPanel">
+    <h3>Players</h3>
+    <div class="players-list" id="playersList"></div>
+    <div style="height:12px"></div>
+    <label>Host controls</label>
+    <div style="display:flex;gap:8px">
+      <button id="btnShowRoleReveal" class="primary">Reveal Roles (pass device)</button>
+      <button id="btnEditNames">Edit Names</button>
+    </div>
+  </div>
+
+  <!-- Center column -->
+  <div class="panel center" id="centerPanel">
+    <div>
+      <div class="mission-tracker" id="missionTracker"></div>
+    </div>
+
+    <div class="proposal">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="muted-text">Current leader: <span id="currentLeaderName">—</span></div>
+          <div class="muted-text">Mission #<span id="currentMissionIndex">—</span> • Team size: <span id="teamSizeNeeded">—</span></div>
+        </div>
+        <div class="actions">
+          <button id="btnStartProposal" class="primary">Start Proposal</button>
+          <button id="btnForceMission" title="Force mission result (for testing)">Force Mission Result</button>
+        </div>
+      </div>
+
+      <div id="teamChooserArea" style="display:none;margin-top:12px">
+        <div class="team-chooser" id="teamChooser"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="btnSubmitProposal" class="primary">Submit Team</button>
+          <button id="btnCancelProposal" class="muted">Cancel</button>
+        </div>
+      </div>
+
+      <div id="votingArea" style="display:none;margin-top:12px">
+        <div style="margin-bottom:8px">Pass device to each player to cast private vote.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="btnStartVoting" class="primary">Begin Private Voting</button>
+        </div>
+      </div>
+
+      <div id="missionActionArea" style="display:none;margin-top:12px">
+        <div style="margin-bottom:8px">Mission approved — selected players submit Success/Fail privately.</div>
+        <div style="display:flex;gap:8px">
+          <button id="btnStartMissionSubmission" class="primary">Begin Mission Submission</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="muted-text">Game Log</div>
+      <div class="log" id="gameLog" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="panel history" id="rightPanel">
+    <h3>History</h3>
+    <div id="historyList"></div>
+    <h4 style="margin-top:12px">Rules / Quick</h4>
+    <div class="muted-text">
+      Missions: first to 3 wins. After Good wins 3rd mission, Assassin guesses Merlin. Mission 4 requires two fails for 7+ players.
+    </div>
+  </div>
+</section>
+
+<!-- Modals -->
+<div id="modalContainer" style="display:none"></div>
+
+<script>
+/*
+  Avalon — Pass & Play (single-file)
+  - Implements a pass-and-play flow for 5–10 players.
+  - No external libraries.
+  - Major functions are commented.
+  - Use mobile-friendly large buttons and single-device private actions.
+
+  High-level structure:
+  - Game state stored in `game` object
+  - UI functions update DOM from state
+  - Modal-based private interactions for reveals, votes, and mission submissions
+*/
+
+/* -------------------------
+   Data / Constants
+   ------------------------- */
+const MIN_PLAYERS = 5;
+const MAX_PLAYERS = 10;
+
+// Standard mission team sizes (index = playerCount)
+const MISSION_TEAM_SIZES = {
+  5: [2,3,2,3,3],
+  6: [2,3,4,3,4],
+  7: [2,3,3,4,4],
+  8: [3,4,4,5,5],
+  9: [3,4,4,5,5],
+  10:[3,4,4,5,5]
+};
+
+// Number of evil players by player count
+const EVIL_COUNTS = {5:2,6:2,7:3,8:3,9:3,10:4};
+
+// Role descriptions
+const ROLE_DESCRIPTIONS = {
+  Merlin: "Good. Knows who Evil are (but Evil don't know Merlin). Speak carefully; if Evil identifies Merlin at end, Evil wins.",
+  Assassin: "Evil. Tries to end the game by identifying Merlin if Good gets 3 missions.",
+  Percival: "Good. Knows Merlin (and may see Morgana as Merlin as a mystery).",
+  Morgana: "Evil. Appears to Percival as Merlin (confuses Percival).",
+  Oberon: "Evil. Evil but unknown to other Evil players (does not reveal himself).",
+  Minion: "Evil. Generic Evil; coordinates with other Evils."
+};
+
+// UI references
+const playersListEl = document.getElementById('playersList');
+const missionTrackerEl = document.getElementById('missionTracker');
+const currentLeaderNameEl = document.getElementById('currentLeaderName');
+const currentMissionIndexEl = document.getElementById('currentMissionIndex');
+const teamSizeNeededEl = document.getElementById('teamSizeNeeded');
+const teamChooserArea = document.getElementById('teamChooserArea');
+const teamChooserEl = document.getElementById('teamChooser');
+const btnStartProposal = document.getElementById('btnStartProposal');
+const btnSubmitProposal = document.getElementById('btnSubmitProposal');
+const btnCancelProposal = document.getElementById('btnCancelProposal');
+const btnShowRoleReveal = document.getElementById('btnShowRoleReveal');
+const btnEditNames = document.getElementById('btnEditNames');
+const btnReassign = document.getElementById('btnReassign');
+const btnReset = document.getElementById('btnReset');
+const btnRevealRolesToggle = document.getElementById('btnRevealRolesToggle');
+const votingArea = document.getElementById('votingArea');
+const btnStartVoting = document.getElementById('btnStartVoting');
+const missionActionArea = document.getElementById('missionActionArea');
+const btnStartMissionSubmission = document.getElementById('btnStartMissionSubmission');
+const historyList = document.getElementById('historyList');
+const gameLog = document.getElementById('gameLog');
+const btnForceMission = document.getElementById('btnForceMission');
+
+let hideRoleTextFast = false;
+
+/* -------------------------
+   Game State
+   ------------------------- */
+const game = {
+  playerCount: 5,
+  players: [], // {id, name, role, alignment, revealed}
+  rolesSelected: [], // list of role names chosen for assignment
+  missionIndex: 0, // 0..4
+  leaderIndex: 0,
+  missionResults: [], // 'success' | 'fail'
+  proposalFailCount: 0, // consecutive failed proposals for current mission
+  currentProposal: null, // {teamIndices:[], votes: {playerId: 'approve'|'reject'}, voteResults:counts}
+  log: [],
+  settings: {
+    useStandardRoles: true,
+    customRoles: {Merlin:true,Assassin:true,Percival:true,Morgana:false,Oberon:false,Minion:true}
+  }
+};
+
+/* -------------------------
+   Utility functions
+   ------------------------- */
+
+// Simple logger: adds line to game log and updates UI
+function log(msg){
+  const time = new Date().toLocaleTimeString();
+  game.log.unshift(`[${time}] ${msg}`);
+  renderLog();
+}
+
+// Convenience: create element
+function el(tag, attrs={}, children=[]){
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==='class') e.className = v;
+    else if(k==='html') e.innerHTML = v;
+    else if(k==='text') e.textContent = v;
+    else e.setAttribute(k,v);
+  });
+  if(!Array.isArray(children)) children = [children];
+  children.forEach(c=>{ if(c==null) return; if(typeof c==='string') e.appendChild(document.createTextNode(c)); else e.appendChild(c);});
+  return e;
+}
+
+// Shuffle array in-place (Fisher-Yates)
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+/* -------------------------
+   Initialization & Setup UI
+   ------------------------- */
+
+// Build players default names and start modal
+function init(){
+  // default to 5 players
+  openSetupModal();
+}
+
+// Open initial setup modal (pick number of players and roles)
+function openSetupModal(){
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+
+  // content
+  const title = el('h2',{text:'Game Setup'});
+  const p = el('p',{text:'Choose number of players (5–10) and roles.'});
+  // players input
+  const playersRow = el('div',{style:'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px'});
+  const countLabel = el('label',{text:'Players:'});
+  const select = el('select',{id:'playerCountSelect'});
+  for(let i=5;i<=10;i++){ select.appendChild(el('option',{value:i,text:i})); }
+  select.value = game.playerCount;
+  playersRow.appendChild(countLabel);
+  playersRow.appendChild(select);
+
+  // roles area
+  const roleHeader = el('label',{text:'Roles:'});
+  const roleControls = el('div',{style:'display:flex;gap:8px;align-items:center;flex-wrap:wrap'});
+  const stdRadio = el('input',{type:'radio',name:'roleMode',id:'stdRoles',value:'standard'});
+  const stdLbl = el('label',{for:'stdRoles',text:'Standard set'});
+  const customRadio = el('input',{type:'radio',name:'roleMode',id:'customRoles',value:'custom'});
+  const customLbl = el('label',{for:'customRoles',text:'Custom roles'});
+
+  stdRadio.checked = game.settings.useStandardRoles;
+  customRadio.checked = !game.settings.useStandardRoles;
+
+  roleControls.appendChild(stdRadio); roleControls.appendChild(stdLbl);
+  roleControls.appendChild(customRadio); roleControls.appendChild(customLbl);
+
+  // custom role checkboxes
+  const customBox = el('div',{id:'customBox',style:'display:none;margin-top:8px;gap:8px;flex-wrap:wrap'});
+  ['Merlin','Percival','Assassin','Morgana','Oberon','Minion'].forEach(r=>{
+    const cb = el('input',{type:'checkbox',id:'cb_'+r});
+    if(game.settings.customRoles[r]) cb.checked = true;
+    const lbl = el('label',{for:'cb_'+r,text:r});
+    const wrapper = el('div',{style:'display:flex;gap:6px;align-items:center;min-width:120px'});
+    wrapper.appendChild(cb); wrapper.appendChild(lbl);
+    customBox.appendChild(wrapper);
+  });
+
+  // Host player names area (editable list)
+  const namesHeader = el('label',{text:'Player names (editable):'});
+  const namesList = el('div',{id:'namesList',style:'display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto'});
+  for(let i=0;i<game.playerCount;i++){
+    const input = el('input',{type:'text',value:`Player ${i+1}`, 'data-index':i});
+    namesList.appendChild(input);
+  }
+
+  // Buttons
+  const btnRow = el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:12px'});
+  const startBtn = el('button',{class:'primary',text:'Start game'});
+  const cancelBtn = el('button',{text:'Cancel'});
+
+  btnRow.appendChild(cancelBtn); btnRow.appendChild(startBtn);
+
+  // Compose
+  modal.appendChild(title);
+  modal.appendChild(p);
+  modal.appendChild(playersRow);
+  modal.appendChild(roleHeader);
+  modal.appendChild(roleControls);
+  modal.appendChild(customBox);
+  modal.appendChild(namesHeader);
+  modal.appendChild(namesList);
+  modal.appendChild(btnRow);
+
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display = 'block';
+
+  // initial show/hide
+  if(!game.settings.useStandardRoles) customBox.style.display='flex';
+
+  // Event handlers
+  stdRadio.addEventListener('change', ()=>{ customBox.style.display='none' });
+  customRadio.addEventListener('change', ()=>{ customBox.style.display='flex' });
+
+  select.addEventListener('change', ()=>{
+    const n = parseInt(select.value,10);
+    // rebuild names list inputs
+    namesList.innerHTML = '';
+    for(let i=0;i<n;i++){
+      const val = (game.players[i] && game.players[i].name) ? game.players[i].name : `Player ${i+1}`;
+      const input = el('input',{type:'text',value:val, 'data-index':i});
+      namesList.appendChild(input);
+    }
+  });
+
+  cancelBtn.addEventListener('click', ()=>{
+    container.style.display='none'; container.innerHTML='';
+  });
+
+  startBtn.addEventListener('click', ()=>{
+    // Gather settings
+    const n = parseInt(select.value,10);
+    game.playerCount = n;
+    game.settings.useStandardRoles = stdRadio.checked;
+    const customRoleSettings = {};
+    ['Merlin','Percival','Assassin','Morgana','Oberon','Minion'].forEach(r=>{
+      const c = document.getElementById('cb_'+r);
+      if(c) customRoleSettings[r] = c.checked;
+    });
+    game.settings.customRoles = customRoleSettings;
+
+    // Collect names
+    const inputs = namesList.querySelectorAll('input');
+    game.players = [];
+    inputs.forEach((inp,i)=>{
+      const nm = inp.value.trim() || `Player ${i+1}`;
+      game.players.push({id:i,name:nm,role:null,alignment:null,revealed:false});
+    });
+
+    // initialize other state
+    game.missionIndex = 0;
+    game.leaderIndex = 0;
+    game.missionResults = [];
+    game.proposalFailCount = 0;
+    game.currentProposal = null;
+    game.log = [];
+    container.style.display='none'; container.innerHTML='';
+    assignRoles(); // auto assign based on settings
+    renderAll();
+    log('Game started.');
+    // show host hint
+    infoModal('Setup complete','Pass device to each player to reveal their role (Host → Reveal Roles).');
+  });
+
+}
+
+/* -------------------------
+   Role assignment
+   ------------------------- */
+
+// Build role list and assign randomly
+function assignRoles(){
+  const n = game.playerCount;
+  const evilCount = EVIL_COUNTS[n];
+  const goodCount = n - evilCount;
+  let roles = [];
+
+  if(game.settings.useStandardRoles){
+    // Heuristic standard set:
+    // Always include Merlin (good) and Assassin (evil).
+    // Include Percival for 6+ players.
+    // Include Morgana for 7+ players.
+    // Include Oberon for 8+ players.
+    roles.push('Merlin'); // good
+    roles.push('Assassin'); // evil
+
+    if(n >= 6) roles.push('Percival'); // good
+    if(n >= 7) roles.push('Morgana'); // evil
+    if(n >= 8) roles.push('Oberon'); // evil
+
+    // Count assigned evil and good so far
+    let evilAssigned = roles.filter(r=>isEvil(r)).length;
+    let goodAssigned = roles.filter(r=>!isEvil(r)).length;
+
+    // Fill remaining evils with Minion
+    while(evilAssigned < evilCount){
+      roles.push('Minion'); evilAssigned++;
+    }
+    // Fill remaining goods with Loyal Servant (we'll call them "Loyal" internally)
+    while(goodAssigned < goodCount){
+      roles.push('Loyal'); goodAssigned++;
+    }
+  } else {
+    // Custom selection: include mandatory roles selected, then fill with generic loyals/minions to satisfy counts
+    const sel = game.settings.customRoles;
+    // For safety, ensure Assassin & Merlin present
+    if(!sel['Merlin']) sel['Merlin'] = true;
+    if(!sel['Assassin']) sel['Assassin'] = true;
+    if(sel['Merlin']) roles.push('Merlin');
+    if(sel['Assassin']) roles.push('Assassin');
+    if(sel['Percival']) roles.push('Percival');
+    if(sel['Morgana']) roles.push('Morgana');
+    if(sel['Oberon']) roles.push('Oberon');
+    // Add Minion if selected
+    if(sel['Minion']) roles.push('Minion');
+
+    // Now ensure counts match alignment distribution
+    let evilAssigned = roles.filter(r=>isEvil(r)).length;
+    let goodAssigned = roles.filter(r=>!isEvil(r)).length;
+    const evilNeeded = EVIL_COUNTS[n];
+    const goodNeeded = n - evilNeeded;
+
+    // Remove duplicates of Minion if many were added accidentally; keep only one Minion in list as template
+    // Then fill remaining
+    // Fill evils
+    while(evilAssigned < evilNeeded){
+      roles.push('Minion'); evilAssigned++;
+    }
+    // Fill goods
+    while(goodAssigned < goodNeeded){
+      roles.push('Loyal'); goodAssigned++;
+    }
+  }
+
+  // Final roles array length must equal player count
+  if(roles.length !== n){
+    // As a fallback, make sure lengths match by trimming/padding loyals/minions
+    if(roles.length > n) roles = roles.slice(0,n);
+    else while(roles.length < n) roles.push('Loyal');
+  }
+
+  // Shuffle and assign
+  shuffle(roles);
+  game.rolesSelected = roles.slice();
+  game.players.forEach((p,i)=>{
+    const r = roles[i];
+    p.role = r === 'Loyal' ? 'Loyal Servant' : r;
+    p.alignment = isEvil(r) ? 'evil' : 'good';
+    p.revealed = false;
+  });
+
+  log('Roles assigned.');
+  // reset mission & leader
+  game.missionIndex = 0;
+  game.leaderIndex = 0;
+  game.missionResults = [];
+  game.proposalFailCount = 0;
+  game.currentProposal = null;
+}
+
+// helper: whether role string (internal) considered evil
+function isEvil(role){
+  // role arg might be 'Loyal' or 'Minion' or 'Merlin' etc.
+  if(!role) return false;
+  return ['Assassin','Morgana','Oberon','Minion'].includes(role);
+}
+
+/* -------------------------
+   Rendering functions
+   ------------------------- */
+
+function renderAll(){
+  renderPlayers();
+  renderMissionTracker();
+  renderLeaderAndMissionInfo();
+  renderHistory();
+  renderLog();
+}
+
+// Render players list and leader indicator
+function renderPlayers(){
+  playersListEl.innerHTML = '';
+  game.players.forEach((p,i)=>{
+    const div = el('div',{class:'player','data-id':p.id});
+    const left = el('div',{style:'display:flex;flex-direction:column;gap:2px'});
+    const name = el('div',{class:'name',text:p.name});
+    const small = el('div',{class:'small',text: p.role && p.revealed ? `` : ``});
+    left.appendChild(name); left.appendChild(small);
+
+    const right = el('div',{style:'display:flex;gap:8px;align-items:center'});
+    if(i === game.leaderIndex){
+      right.appendChild(el('div',{class:'leader-badge',text:'LEADER'}));
+    }
+    div.appendChild(left);
+    div.appendChild(right);
+    playersListEl.appendChild(div);
+  });
+}
+
+// Render mission tracker with success/fail markers
+function renderMissionTracker(){
+  const n = game.playerCount;
+  const sizes = MISSION_TEAM_SIZES[n];
+  missionTrackerEl.innerHTML = '';
+  for(let i=0;i<5;i++){
+    const box = el('div',{class:'mission'});
+    let label = (i+1);
+    box.textContent = label;
+    if(game.missionResults[i] === 'success') box.classList.add('success');
+    if(game.missionResults[i] === 'fail') box.classList.add('fail');
+    missionTrackerEl.appendChild(box);
+  }
+}
+
+// Render leader name and mission info
+function renderLeaderAndMissionInfo(){
+  currentLeaderNameEl.textContent = game.players[game.leaderIndex].name;
+  currentMissionIndexEl.textContent = game.missionIndex + 1;
+  const n = game.playerCount;
+  const teamSize = MISSION_TEAM_SIZES[n][game.missionIndex];
+  teamSizeNeededEl.textContent = teamSize;
+}
+
+// Render history
+function renderHistory(){
+  historyList.innerHTML = '';
+  game.log.slice(0,20).forEach(line=>{
+    historyList.appendChild(el('div',{class:'row'}, [ el('div',{text:line}) ]) );
+  });
+}
+
+// Render game log area
+function renderLog(){
+  gameLog.innerHTML = '';
+  game.log.slice(0,200).forEach(line=>{
+    const p = el('p',{text:line});
+    gameLog.appendChild(p);
+  });
+}
+
+/* -------------------------
+   UI actions: role reveal flow
+   ------------------------- */
+
+// Open pass-and-play role reveal for each player
+btnShowRoleReveal.addEventListener('click', ()=> openRoleRevealFlow());
+
+// Toggle hide role description text (faster play)
+btnRevealRolesToggle.addEventListener('click', ()=>{
+  hideRoleTextFast = !hideRoleTextFast;
+  btnRevealRolesToggle.textContent = hideRoleTextFast ? 'Show role text (detailed)' : 'Hide role text (faster)';
+});
+
+// Role reveal modal sequence
+async function openRoleRevealFlow(){
+  for(let i=0;i<game.players.length;i++){
+    await showRoleForPlayer(i);
+  }
+  infoModal('All roles revealed','Roles have been revealed privately. Pass device back to host to begin proposals.');
+  renderPlayers();
+}
+
+// Display one player's role privately (modal), resolve when they press Done
+function showRoleForPlayer(index){
+  return new Promise((resolve)=>{
+    const p = game.players[index];
+    const container = document.getElementById('modalContainer');
+    container.innerHTML = '';
+    const backdrop = el('div',{class:'modal-backdrop'});
+    const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+    const title = el('h3',{text:`Pass to ${p.name}`});
+    const prompt = el('p',{text:'Tap to reveal your role. Keep device private.'});
+    const revealBtn = el('button',{class:'primary',text:'Reveal Role'});
+    const content = el('div',{style:'margin-top:12px'});
+
+    revealBtn.addEventListener('click', ()=>{
+      // show role card (mostly opaque)
+      content.innerHTML = '';
+      const card = el('div',{class:'role-card'});
+      const badge = el('div',{style:'min-width:120px'});
+      badge.appendChild(el('div',{class:'role-title',text:p.role}));
+      badge.appendChild(el('div',{class:'muted-text',text:`${p.alignment === 'evil' ? 'EVIL' : 'GOOD'}`}));
+      const desc = el('div',{class:'role-desc',html: hideRoleTextFast ? '' : ROLE_DESCRIPTIONS[p.role.replace(' Loyal Servant','') || '']});
+      card.appendChild(badge);
+      card.appendChild(desc);
+
+      // For Merlin and Percival show what they see
+      const extra = el('div',{style:'margin-top:10px;font-size:0.95rem'});
+      if(p.role === 'Merlin'){
+        // Merlin sees other evils (but not Oberon if present)
+        const evils = game.players.filter(pp=>pp.alignment==='evil' && pp.role!=='Oberon').map(pp=>pp.name);
+        extra.textContent = `You see: ${evils.join(', ') || 'None (maybe Oberon hides)'} (don't reveal)`;
+      } else if(p.role === 'Percival'){
+        // Percival sees Merlin and Morgana (both appear as Merlin)
+        const merlinish = game.players.filter(pp=> pp.role==='Merlin' || pp.role==='Morgana').map(pp=>pp.name);
+        extra.textContent = `You see (Merlin or Morgana): ${merlinish.join(', ')}`;
+      } else if(isEvil(p.role)){
+        // Evil players know other evil players except Oberon doesn't reveal himself and Oberon doesn't know others
+        if(p.role === 'Oberon'){
+          extra.textContent = "You are Oberon. You do NOT reveal yourself to other Evils and you do NOT see evil teammates.";
+        } else {
+          const others = game.players.filter(pp=>pp.alignment==='evil' && pp.id!==p.id && pp.role!=='Oberon').map(pp=>pp.name);
+          extra.textContent = `Your evil teammates: ${others.join(', ') || 'None visible'}`;
+        }
+      }
+
+      const doneBtn = el('button',{text:'Done'});
+      doneBtn.addEventListener('click', ()=>{
+        // mark revealed
+        p.revealed = true;
+        container.style.display='none';
+        container.innerHTML='';
+        resolve();
+      });
+
+      content.appendChild(card);
+      content.appendChild(extra);
+      content.appendChild(el('div',{style:'height:12px'}));
+      content.appendChild(doneBtn);
+    });
+
+    modal.appendChild(title);
+    modal.appendChild(prompt);
+    modal.appendChild(revealBtn);
+    modal.appendChild(content);
+
+    backdrop.appendChild(modal);
+    container.appendChild(backdrop);
+    container.style.display='block';
+  });
+}
+
+/* -------------------------
+   Proposal creation and leader selection
+   ------------------------- */
+
+btnStartProposal.addEventListener('click', ()=> beginProposalPhase());
+
+// Begin proposal: show chooser UI for leader to pick team
+function beginProposalPhase(){
+  const leader = game.leaderIndex;
+  const n = game.playerCount;
+  const teamSize = MISSION_TEAM_SIZES[n][game.missionIndex];
+  // show chooser
+  teamChooserArea.style.display = 'block';
+  teamChooserEl.innerHTML = '';
+  game.players.forEach((p,i)=>{
+    const chip = el('div',{class:'name-chip',text:p.name,'data-index':i});
+    if(i === leader) chip.style.border = '2px dashed rgba(255,255,255,0.06)';
+    chip.addEventListener('click', ()=>{
+      // toggle selection
+      chip.classList.toggle('selected');
+      const selected = [...teamChooserEl.querySelectorAll('.selected')].length;
+      if(selected > teamSize) {
+        // prevent more than teamSize - revert
+        chip.classList.remove('selected');
+        // shake effect
+        chip.animate([{transform:'translateY(0)'},{transform:'translateY(-6px)'},{transform:'translateY(0)'}],{duration:260});
+      }
+    });
+    teamChooserEl.appendChild(chip);
+  });
+}
+
+// Submit team proposal
+btnSubmitProposal.addEventListener('click', ()=>{
+  const n = game.playerCount;
+  const teamSize = MISSION_TEAM_SIZES[n][game.missionIndex];
+  const selectedChips = [...teamChooserEl.querySelectorAll('.selected')];
+  if(selectedChips.length !== teamSize){
+    alert(`You must select exactly ${teamSize} players for this mission.`);
+    return;
+  }
+  const teamIndices = selectedChips.map(c=>parseInt(c.getAttribute('data-index'),10));
+  // Save proposal
+  game.currentProposal = {
+    leaderIndex: game.leaderIndex,
+    teamIndices,
+    votes: {},
+    voteOrder: Array.from({length:game.playerCount}, (_,i)=>i) // order can be simple 0..n-1 for pass-and-play
+  };
+  teamChooserArea.style.display = 'none';
+  votingArea.style.display = 'block';
+  log(`${game.players[game.leaderIndex].name} proposed team: ${teamIndices.map(i=>game.players[i].name).join(', ')}`);
+});
+
+// Cancel proposal
+btnCancelProposal.addEventListener('click', ()=>{
+  teamChooserArea.style.display = 'none';
+});
+
+/* -------------------------
+   Voting phase (private pass-and-play)
+   ------------------------- */
+
+btnStartVoting.addEventListener('click', async ()=>{
+  if(!game.currentProposal) return;
+  await beginVotingFlow();
+  // after voting flow, evaluate
+  const voteCounts = Object.values(game.currentProposal.votes).reduce((acc,v)=>{
+    if(v === 'approve') acc.approve++;
+    else acc.reject++;
+    return acc;
+  },{approve:0,reject:0});
+  log(`Vote tally — Approve: ${voteCounts.approve}, Reject: ${voteCounts.reject}`);
+  // Show results modal with visual cards
+  await showVoteResults(voteCounts);
+  // If approved? majority approve
+  if(voteCounts.approve > voteCounts.reject){
+    log('Proposal approved — mission proceeds.');
+    // Reset proposal fail count
+    game.proposalFailCount = 0;
+    votingArea.style.display='none';
+    missionActionArea.style.display='block';
+  } else {
+    log('Proposal rejected.');
+    game.proposalFailCount++;
+    // leader rotates
+    game.leaderIndex = (game.leaderIndex + 1) % game.playerCount;
+    game.currentProposal = null;
+    votingArea.style.display='none';
+    // If 5 consecutive rejected proposals => auto-fail mission
+    if(game.proposalFailCount >= 5){
+      log('Five consecutive rejected proposals — Evil scores mission automatically.');
+      game.missionResults[game.missionIndex] = 'fail';
+      game.missionIndex++;
+      game.proposalFailCount = 0;
+      checkWinCondition();
+    }
+  }
+  renderAll();
+});
+
+// Private voting flow
+function beginVotingFlow(){
+  return new Promise(async (resolve)=>{
+    const order = [...Array(game.playerCount).keys()];
+    // Reset votes
+    game.currentProposal.votes = {};
+    const container = document.getElementById('modalContainer');
+    container.innerHTML = '';
+    const backdrop = el('div',{class:'modal-backdrop'});
+
+    const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+    let votingIndex = 0;
+
+    // create common elements (we will insert them into modal in different screens)
+    const title = el('h3',{text:'Private Voting'});
+    const instr = el('p',{text:'Pass device to each player in turn. They will choose Approve or Reject.'});
+    const playerName = el('div',{style:'font-weight:800;margin-top:8px',text:game.players[order[votingIndex]].name});
+    const voteRow = el('div',{style:'display:flex;gap:8px;margin-top:12px'});
+    const approveBtn = el('button',{class:'primary',text:'Approve'});
+    const rejectBtn = el('button',{class:'danger',text:'Reject'});
+    voteRow.appendChild(approveBtn); voteRow.appendChild(rejectBtn);
+
+    const progress = el('div',{style:'margin-top:10px',text:`${votingIndex+1} / ${order.length}`});
+    const secret = el('div',{style:'margin-top:12px;font-size:12px;color:#666',text:'(Players vote privately; only reveal after all votes cast)'});
+
+    // Render the "Pass to X" screen which only has a Reveal button
+    function renderPassScreen(){
+      modal.innerHTML = '';
+      modal.appendChild(title);
+      modal.appendChild(el('p',{text:`Pass to ${game.players[order[votingIndex]].name}`})); // show who to pass to
+      modal.appendChild(el('p',{text:'Tap Reveal to cast your private vote.'}));
+      const revealBtn = el('button',{class:'primary',text:'Reveal Vote'});
+      revealBtn.addEventListener('click', ()=> {
+        // when reveal pressed, show actual vote buttons for this player
+        renderVoteScreen();
+      });
+      modal.appendChild(revealBtn);
+      modal.appendChild(el('div',{style:'height:8px'}));
+    }
+
+    // Render the actual voting controls for the current player
+    function renderVoteScreen(){
+      modal.innerHTML = '';
+      modal.appendChild(title);
+      modal.appendChild(instr);
+      playerName.textContent = game.players[order[votingIndex]].name;
+      modal.appendChild(playerName);
+      modal.appendChild(voteRow);
+      progress.textContent = `${votingIndex+1} / ${order.length}`;
+      modal.appendChild(progress);
+      modal.appendChild(secret);
+    }
+
+    // Vote handlers (unchanged behavior: set vote, advance index, resolve when finished)
+    approveBtn.addEventListener('click', ()=>{
+      const pid = order[votingIndex];
+      game.currentProposal.votes[pid] = 'approve';
+      votingIndex++;
+      if(votingIndex >= order.length){
+        container.style.display='none';
+        container.innerHTML='';
+        resolve();
+      } else {
+        // show pass screen for next player
+        renderPassScreen();
+      }
+    });
+    rejectBtn.addEventListener('click', ()=>{
+      const pid = order[votingIndex];
+      game.currentProposal.votes[pid] = 'reject';
+      votingIndex++;
+      if(votingIndex >= order.length){
+        container.style.display='none';
+        container.innerHTML='';
+        resolve();
+      } else {
+        // show pass screen for next player
+        renderPassScreen();
+      }
+    });
+
+    // attach modal & start with pass screen
+    backdrop.appendChild(modal);
+    container.appendChild(backdrop);
+    container.style.display='block';
+    renderPassScreen();
+  });
+}
+
+
+// Show vote results visually (cards for accept/deny)
+function showVoteResults(voteCounts){
+  return new Promise((resolve)=>{
+    const container = document.getElementById('modalContainer');
+    container.innerHTML = '';
+    const backdrop = el('div',{class:'modal-backdrop'});
+    const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+
+    const title = el('h3',{text:'Vote Results'});
+    const tally = el('p',{text:`Approve: ${voteCounts.approve}, Reject: ${voteCounts.reject}`});
+    const grid = el('div',{style:'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px'});
+
+    // Show each player's vote as card
+    // Show only total votes, not individual votes
+for (let i = 0; i < voteCounts.approve; i++) {
+  grid.appendChild(el('div',{class:'card-visual accept',text:'APPROVE'}));
+}
+for (let i = 0; i < voteCounts.reject; i++) {
+  grid.appendChild(el('div',{class:'card-visual deny',text:'REJECT'}));
+}
+
+    const ok = el('button',{class:'primary',text:'Continue'});
+    ok.addEventListener('click', ()=>{
+      container.style.display='none'; container.innerHTML='';
+      resolve();
+    });
+
+    modal.appendChild(title); modal.appendChild(tally); modal.appendChild(grid); modal.appendChild(el('div',{style:'height:12px'})); modal.appendChild(ok);
+    backdrop.appendChild(modal);
+    container.appendChild(backdrop);
+    container.style.display='block';
+  });
+}
+
+/* -------------------------
+   Mission submission flow
+   ------------------------- */
+
+btnStartMissionSubmission.addEventListener('click', async ()=>{
+  if(!game.currentProposal) return;
+  await beginMissionSubmissionFlow();
+  // mission resolved inside the flow
+});
+
+// Private submission flow: selected players submit success/fail privately
+function beginMissionSubmissionFlow(){
+  return new Promise(async (resolve)=>{
+    const team = game.currentProposal.teamIndices.slice();
+    const container = document.getElementById('modalContainer');
+    container.innerHTML = '';
+    const backdrop = el('div',{class:'modal-backdrop'});
+    const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+    const title = el('h3',{text:'Mission Submission (private)'});
+    modal.appendChild(title);
+    const info = el('p',{text:'Pass device to each selected player in turn. Good players must submit Success; Evil players may choose Success or Fail.'});
+    modal.appendChild(info);
+    const submissions = {};
+    let idx = 0;
+
+    // Determine if this mission requires two fails to fail
+    const n = game.playerCount;
+    const requiresTwoFails = (n >= 7 && game.missionIndex === 3); // mission 4 (index 3) requires two fails for 7+
+
+    // render pass screen for current team member
+    function renderPassScreen(){
+      modal.innerHTML = '';
+      modal.appendChild(el('h3',{text:`Pass to ${game.players[team[idx]].name}`}));
+      modal.appendChild(el('p',{text:'Tap Reveal to submit your mission card privately.'}));
+      const revealBtn = el('button',{class:'primary',text:'Reveal Submission'});
+      revealBtn.addEventListener('click', ()=> renderSubmissionScreen());
+      modal.appendChild(revealBtn);
+      // add small note about mission fail rule
+      modal.appendChild(el('div',{style:'margin-top:10px',text: requiresTwoFails ? 'This mission requires TWO fail cards to fail (7+ players on 4th mission).' : 'This mission requires ONE fail to fail.'}));
+    }
+
+    // render actual submission buttons for the current team member
+    function renderSubmissionScreen(){
+      modal.innerHTML = '';
+      modal.appendChild(el('h3',{text:'Mission Submission'}));
+      modal.appendChild(el('div',{style:'font-weight:800;margin-top:8px',text:game.players[team[idx]].name}));
+      modal.appendChild(el('div',{style:'margin-top:8px',text: requiresTwoFails ? 'This mission requires TWO fail cards to fail (7+ players on 4th mission).' : 'This mission requires ONE fail to fail.'}));
+
+      const buttons = el('div',{style:'display:flex;gap:8px;margin-top:12px'});
+      const submitSuccess = el('button',{class:'primary',text:'Submit Success'});
+      const submitFail = el('button',{class:'danger',text:'Submit Fail'});
+
+      buttons.appendChild(submitSuccess);
+      buttons.appendChild(submitFail);
+
+      // Disable Fail button for Good players
+      function updateButtonsForPlayer(pid){
+        const p = game.players[pid];
+        if(p.alignment === 'good'){
+          submitFail.disabled = true;
+          submitFail.style.opacity = 0.6;
+        } else {
+          submitFail.disabled = false;
+          submitFail.style.opacity = 1;
+        }
+      }
+      updateButtonsForPlayer(team[idx]);
+
+      submitSuccess.addEventListener('click', ()=>{
+        const pid = team[idx];
+        submissions[pid] = 'success';
+        idx++;
+        if(idx >= team.length){
+          container.style.display='none';
+          container.innerHTML='';
+          handleMissionResult(submissions, requiresTwoFails);
+          resolve();
+        } else {
+          renderPassScreen();
+        }
+      });
+
+      submitFail.addEventListener('click', ()=>{
+        const pid = team[idx];
+        submissions[pid] = 'fail';
+        idx++;
+        if(idx >= team.length){
+          container.style.display='none';
+          container.innerHTML='';
+          handleMissionResult(submissions, requiresTwoFails);
+          resolve();
+        } else {
+          renderPassScreen();
+        }
+      });
+
+      modal.appendChild(buttons);
+    }
+
+    // attach once and start flow
+    backdrop.appendChild(modal);
+    container.appendChild(backdrop);
+    container.style.display='block';
+    renderPassScreen();
+  });
+}
+
+
+// Evaluate mission submissions and show result
+function handleMissionResult(submissions, requiresTwoFails){
+  // Count fails & successes
+  const fails = Object.values(submissions).filter(v => v === 'fail').length;
+  const successes = Object.values(submissions).filter(v => v === 'success').length;
+  const succeeded = !( (requiresTwoFails && fails >= 2) || (!requiresTwoFails && fails >= 1) );
+
+  // Show a results modal (similar to vote results) before applying state changes
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+
+  const title = el('h3',{text:'Mission Results'});
+  const tally = el('p',{text:`Success: ${successes}, Fail: ${fails}`});
+  const grid = el('div',{style:'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px'});
+
+  // show success and fail cards
+  for (let i = 0; i < successes; i++) {
+    grid.appendChild(el('div',{class:'card-visual succ',text:'SUCCESS'}));
+  }
+  for (let i = 0; i < fails; i++) {
+    grid.appendChild(el('div',{class:'card-visual fail',text:'FAIL'}));
+  }
+
+  const ok = el('button',{class:'primary',text:'Continue'});
+  ok.addEventListener('click', ()=>{
+    container.style.display='none'; container.innerHTML='';
+
+    // Apply the mission result to game state
+    game.missionResults[game.missionIndex] = succeeded ? 'success' : 'fail';
+    log(`Mission ${game.missionIndex+1} result: ${succeeded ? 'SUCCESS' : 'FAIL'} (${fails} fail${fails!==1?'s':''})`);
+    // Advance mission index & reset proposal count & clear current proposal
+    game.missionIndex++;
+    game.proposalFailCount = 0;
+    game.currentProposal = null;
+
+    // After mission, leader rotates to next player
+    game.leaderIndex = (game.leaderIndex + 1) % game.playerCount;
+
+    renderAll();
+    checkWinCondition();
+  });
+
+  modal.appendChild(title); modal.appendChild(tally); modal.appendChild(grid); modal.appendChild(el('div',{style:'height:12px'})); modal.appendChild(ok);
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display='block';
+}
+
+function checkWinCondition(){
+  const successCount = game.missionResults.filter(r=>r==='success').length;
+  const failCount = game.missionResults.filter(r=>r==='fail').length;
+
+  if(successCount >= 3){
+    // Good achieved 3 missions — Assassin gets a reveal guess
+    log('Good reached 3 missions. Assassin gets to guess Merlin!');
+    // Find Assassin player index (could be multiple deserters? assumption: one Assassin)
+    const assassin = game.players.find(p=>p.role==='Assassin');
+    if(!assassin){
+      // No assassin? Should not happen, but finalize Good victory
+      endGame('good', null);
+      return;
+    }
+    // Show private guess flow for Assassin
+    assassinGuessMerlin(assassin.id);
+    return;
+  }
+
+  if(failCount >= 3){
+    // Evil wins immediately
+    endGame('evil', null);
+    return;
+  }
+
+  // else continue game (no winner yet). Check if all 5 missions played (should be covered by counts) but winner already decided above.
+}
+
+// Assassin guesses Merlin flow
+function assassinGuessMerlin(assassinId){
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+  const title = el('h3',{text:'Assassin — Guess Merlin'});
+  const instr = el('p',{text:`${game.players[assassinId].name}, pass device and privately choose who you think is Merlin.`});
+  modal.appendChild(title); modal.appendChild(instr);
+
+  const grid = el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;margin-top:12px'});
+  game.players.forEach((p)=>{
+    const btn = el('button',{text:p.name});
+    btn.addEventListener('click', ()=>{
+      container.style.display='none';
+      container.innerHTML='';
+      const correct = p.role === 'Merlin';
+      if(correct){
+        log(`Assassin guessed ${p.name} — correct. Evil steals the victory!`);
+        endGame('evil', {assassin: game.players[assassinId], guessed: p});
+      } else {
+        log(`Assassin guessed ${p.name} — wrong. Good wins.`);
+        endGame('good', {assassin: game.players[assassinId], guessed: p});
+      }
+    });
+    grid.appendChild(btn);
+  });
+  modal.appendChild(grid);
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display='block';
+}
+
+// End game and show summary
+function endGame(winner, extra){
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+  modal.appendChild(el('h2',{text: winner === 'good' ? 'GOOD WINS' : 'EVIL WINS' }));
+  const details = el('div',{style:'margin-top:8px'});
+  details.appendChild(el('p',{text: `Mission results: ${game.missionResults.map((r,i)=>`#${i+1}:${r}`).join(', ')}`}));
+  if(extra && extra.assassin){
+    details.appendChild(el('p',{text:`Assassin: ${extra.assassin.name}, guessed: ${extra.guessed.name} (was ${extra.guessed.role})`}));
+  }
+  const allRoles = game.players.map(p=>`${p.name}: ${p.role} (${p.alignment})`).join('\n');
+  const rolesArea = el('pre',{text:allRoles, style:'white-space:pre-wrap;margin-top:8px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px'});
+
+  const btnRow = el('div',{style:'display:flex;gap:8px;margin-top:12px'});
+  const restart = el('button',{class:'primary',text:'Play again (same roles)'});
+  const newgame = el('button',{text:'New Game'});
+  restart.addEventListener('click', ()=>{
+    // reassign same role set and reset state
+    assignRoles();
+    container.style.display='none';
+    container.innerHTML='';
+    renderAll();
+  });
+  newgame.addEventListener('click', ()=>{
+    container.style.display='none';
+    container.innerHTML='';
+    openSetupModal();
+  });
+
+  btnRow.appendChild(restart);
+  btnRow.appendChild(newgame);
+
+  modal.appendChild(details); modal.appendChild(rolesArea); modal.appendChild(btnRow);
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display='block';
+}
+
+/* -------------------------
+   Helpers: simple UI modals
+   ------------------------- */
+
+function infoModal(titleText, message){
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+  modal.appendChild(el('h3',{text:titleText}));
+  modal.appendChild(el('p',{text:message}));
+  const ok = el('button',{class:'primary',text:'OK'});
+  ok.addEventListener('click', ()=>{ container.style.display='none'; container.innerHTML=''; });
+  modal.appendChild(ok);
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display='block';
+}
+
+/* -------------------------
+   Reassign / Reset / Edit names
+   ------------------------- */
+
+btnEditNames.addEventListener('click', ()=> openEditNamesModal());
+btnReassign.addEventListener('click', ()=> { assignRoles(); renderAll(); infoModal('Reassigned','Roles were randomly reassigned. Use Reveal Roles to show them.'); });
+btnReset.addEventListener('click', ()=> { if(confirm('Reset game to setup?')) openSetupModal(); });
+
+function openEditNamesModal(){
+  const container = document.getElementById('modalContainer');
+  container.innerHTML = '';
+  const backdrop = el('div',{class:'modal-backdrop'});
+  const modal = el('div',{class:'modal',role:'dialog','aria-modal':'true'});
+  modal.appendChild(el('h3',{text:'Edit Player Names'}));
+  const list = el('div',{style:'display:flex;flex-direction:column;gap:8px;margin-top:8px;max-height:320px;overflow:auto'});
+  game.players.forEach((p,i)=>{
+    const input = el('input',{type:'text',value:p.name,'data-index':i});
+    list.appendChild(input);
+  });
+  const btn = el('button',{class:'primary',text:'Save'});
+  btn.addEventListener('click', ()=>{
+    const inputs = list.querySelectorAll('input');
+    inputs.forEach(inp=>{
+      const i = parseInt(inp.getAttribute('data-index'),10);
+      game.players[i].name = inp.value.trim() || `Player ${i+1}`;
+    });
+    container.style.display='none'; container.innerHTML='';
+    renderAll();
+  });
+  const cancel = el('button',{text:'Cancel'});
+  cancel.addEventListener('click', ()=>{ container.style.display='none'; container.innerHTML=''; });
+
+  modal.appendChild(list);
+  const row = el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:8px'});
+  row.appendChild(cancel); row.appendChild(btn);
+  modal.appendChild(row);
+  backdrop.appendChild(modal);
+  container.appendChild(backdrop);
+  container.style.display='block';
+}
+
+/* -------------------------
+   Force mission result (debug/testing)
+   ------------------------- */
+btnForceMission.addEventListener('click', ()=>{
+  if(!confirm('Force current mission to Success? (choose No to force Fail)')) return;
+});
+
+/* -------------------------
+   Initial call
+   ------------------------- */
+init();
+
+/* -------------------------
+   End of JS
+   ------------------------- */
+
+/*
+  NOTES ON MISSION SIZES & ROLE MAPPING (brief):
+
+  Mission team sizes (official standard Avalon distribution):
+    - 5 players: 2, 3, 2, 3, 3
+    - 6 players: 2, 3, 4, 3, 4
+    - 7 players: 2, 3, 3, 4, 4
+    - 8 players: 3, 4, 4, 5, 5
+    - 9 players: 3, 4, 4, 5, 5
+    - 10 players:3, 4, 4, 5, 5
+
+  Number of Evil players by player count:
+    - 5 → 2 evil
+    - 6 → 2 evil
+    - 7 → 3 evil
+    - 8 → 3 evil
+    - 9 → 3 evil
+    - 10 → 4 evil
+
+  "Mission 4 requires two fails" rule:
+    - For 7 or more players, the 4th mission (index 3) requires TWO fail cards to fail the mission. For 5 or 6 players it requires only one fail.
+
+  Standard role mapping used in this app (heuristic):
+    - The app always includes Merlin (Good) and Assassin (Evil).
+    - For more players, it adds extra named roles to spice the game:
+      - Percival is included for 6+ players (Good).
+      - Morgana is included for 7+ players (Evil).
+      - Oberon is included for 8+ players (Evil).
+    - Remaining Good slots are filled with generic Loyal Servants.
+    - Remaining Evil slots are filled with Minions (generic Evil).
+    - If you choose "Custom roles" you can choose any of Merlin/Assassin/Percival/Morgana/Oberon/Minion; the system will then fill remaining slots with Loyals/Minions to meet the required Good/Evil counts.
+
+  This app's "Standard set" selection is a practical, commonly-used heuristic for casual Avalon play.
+  If you need strict tournament-role lists per exact published expansions, switch to "Custom roles" and check exactly which roles you want.
+*/
+</script>
+</body>
+</html>
